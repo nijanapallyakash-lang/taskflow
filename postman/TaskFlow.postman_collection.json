@@ -1,0 +1,159 @@
+{
+  "info": {
+    "name": "TaskFlow API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "item": [
+    {
+      "name": "Login (admin)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', () => pm.response.to.have.status(200));",
+        "const b = pm.response.json();",
+        "pm.test('returns JWT + ADMIN role', () => { pm.expect(b.token).to.be.a('string'); pm.expect(b.user.role).to.eql('ADMIN'); });",
+        "pm.environment.set('token', b.token);"
+      ] } }],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{adminEmail}}\",\"password\":\"{{adminPassword}}\"}" }
+      }
+    },
+    {
+      "name": "Register - validation error",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('400 with uniform error body', () => {",
+        "  pm.response.to.have.status(400);",
+        "  const b = pm.response.json();",
+        "  pm.expect(b).to.include.keys('timestamp','status','error','message','path','fieldErrors');",
+        "  pm.expect(b.fieldErrors).to.have.property('email');",
+        "});"
+      ] } }],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/auth/register",
+        "body": { "mode": "raw", "raw": "{\"email\":\"bad\",\"password\":\"x\",\"fullName\":\"\"}" }
+      }
+    },
+    {
+      "name": "Create project",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('201 Created', () => pm.response.to.have.status(201));",
+        "pm.environment.set('projectId', pm.response.json().id);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/projects",
+        "body": { "mode": "raw", "raw": "{\"name\":\"Postman Project\",\"description\":\"Created by tests\"}" }
+      }
+    },
+    {
+      "name": "Create sprint",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('201 Created + PLANNED', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().status).to.eql('PLANNED'); });",
+        "pm.environment.set('sprintId', pm.response.json().id);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/projects/{{projectId}}/sprints",
+        "body": { "mode": "raw", "raw": "{\"name\":\"Sprint 1\",\"goal\":\"MVP\"}" }
+      }
+    },
+    {
+      "name": "Start sprint",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('ACTIVE', () => pm.expect(pm.response.json().status).to.eql('ACTIVE'));"
+      ] } }],
+      "request": { "method": "POST", "url": "{{baseUrl}}/api/sprints/{{sprintId}}/start" }
+    },
+    {
+      "name": "Create task",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('201 Created, status TODO', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().status).to.eql('TODO'); });",
+        "pm.environment.set('taskId', pm.response.json().id);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks",
+        "body": { "mode": "raw", "raw": "{\"title\":\"Build login\",\"type\":\"STORY\",\"priority\":\"HIGH\",\"sprintId\":{{sprintId}},\"labels\":\"auth\",\"estimatedHours\":4}" }
+      }
+    },
+    {
+      "name": "Move task to Done",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('DONE with completedAt', () => { pm.expect(b.status).to.eql('DONE'); pm.expect(b.completedAt).to.not.be.null; });"
+      ] } }],
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/tasks/{{taskId}}/status",
+        "body": { "mode": "raw", "raw": "{\"status\":\"DONE\"}" }
+      }
+    },
+    {
+      "name": "Log work",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('201 Created', () => pm.response.to.have.status(201));"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/tasks/{{taskId}}/worklogs",
+        "body": { "mode": "raw", "raw": "{\"hours\":1.5,\"note\":\"Postman\"}" }
+      }
+    },
+    {
+      "name": "Task detail (audit trail)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('status change audited', () => pm.expect(b.activity.map(a => a.action)).to.include('STATUS_CHANGED'));",
+        "pm.test('hours logged', () => pm.expect(b.loggedHours).to.eql(1.5));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/tasks/{{taskId}}" }
+    },
+    {
+      "name": "Search tasks (priority + label)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('finds the task', () => pm.expect(pm.response.json().map(t => t.id)).to.include(pm.environment.get('taskId')));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks?priority=HIGH&label=auth" }
+    },
+    {
+      "name": "Dashboard",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('100% complete with burndown', () => { pm.expect(b.completionPercent).to.eql(100); pm.expect(b.burndown.points).to.be.an('array').that.is.not.empty; });"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/projects/{{projectId}}/dashboard" }
+    },
+    {
+      "name": "Export CSV",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('csv', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv'));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/projects/{{projectId}}/export?format=csv" }
+    },
+    {
+      "name": "Export PDF",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('pdf', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf'));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/projects/{{projectId}}/export?format=pdf" }
+    },
+    {
+      "name": "No token -> 401",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('401 JSON', () => { pm.response.to.have.status(401); pm.expect(pm.response.json().status).to.eql(401); });"
+      ] } }],
+      "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/api/projects" }
+    }
+  ]
+}

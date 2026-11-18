@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: taskflow
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow"]
+      interval: 5s
+      retries: 10
+
+  # Catches all outgoing email in dev. Inbox UI: http://localhost:8025
+  mail:
+    image: axllent/mailpit:v1.21
+    ports: ["8025:8025", "1025:1025"]
+
+  backend:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DB_HOST: db
+      MAIL_HOST: mail
+      MAIL_PORT: 1025
+      FRONTEND_URL: http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:-change-me-change-me-change-me-change-me-1234}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@taskflow.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      UPLOAD_DIR: /app/uploads
+    ports: ["8080:8080"]
+    volumes: [uploads:/app/uploads]
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    ports: ["3000:80"]
+
+volumes:
+  pgdata:
+  uploads:

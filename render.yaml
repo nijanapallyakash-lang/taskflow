@@ -1,0 +1,54 @@
+# Render Blueprint: New > Blueprint > pick this repo.
+databases:
+  - name: taskflow-db
+    databaseName: taskflow
+    user: taskflow
+    plan: free
+
+services:
+  - type: web
+    name: taskflow-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DB_HOST
+        fromDatabase: { name: taskflow-db, property: host }
+      - key: DB_PORT
+        fromDatabase: { name: taskflow-db, property: port }
+      - key: DB_NAME
+        fromDatabase: { name: taskflow-db, property: database }
+      - key: DB_USER
+        fromDatabase: { name: taskflow-db, property: user }
+      - key: DB_PASSWORD
+        fromDatabase: { name: taskflow-db, property: password }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false   # e.g. https://taskflow-web.onrender.com
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: MAIL_HOST
+        sync: false   # e.g. smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_SMTP_AUTH
+        value: "true"
+      - key: MAIL_STARTTLS
+        value: "true"
+
+  - type: web
+    name: taskflow-web
+    runtime: docker
+    rootDir: frontend
+    plan: free
+    envVars:
+      - key: BACKEND_HOSTPORT
+        fromService: { type: web, name: taskflow-api, property: hostport }
